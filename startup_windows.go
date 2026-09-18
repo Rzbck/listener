@@ -13,11 +13,37 @@ import (
 	"unsafe"
 )
 
-const startupTaskName = "Bitfocus Listener"
+const (
+	startupTaskName        = "Bitfocus Listener"
+	seeMaskNoCloseProcess  = 0x00000040
+	shellExecuteWaitMillis = 15000
+	waitObject0            = 0x00000000
+)
+
+type shellExecuteInfo struct {
+	cbSize       uint32
+	fMask        uint32
+	hwnd         uintptr
+	lpVerb       *uint16
+	lpFile       *uint16
+	lpParameters *uint16
+	lpDirectory  *uint16
+	nShow        int32
+	hInstApp     uintptr
+	lpIDList     uintptr
+	lpClass      *uint16
+	hkeyClass    uintptr
+	dwHotKey     uint32
+	hIcon        uintptr
+	hProcess     syscall.Handle
+}
 
 var (
-	shell32          = syscall.NewLazyDLL("shell32.dll")
-	procShellExecute = shell32.NewProc("ShellExecuteW")
+	shell32                 = syscall.NewLazyDLL("shell32.dll")
+	kernel32                = syscall.NewLazyDLL("kernel32.dll")
+	procShellExecuteEx      = shell32.NewProc("ShellExecuteExW")
+	procWaitForSingleObject = kernel32.NewProc("WaitForSingleObject")
+	procGetExitCodeProcess  = kernel32.NewProc("GetExitCodeProcess")
 )
 
 func startupSupported() bool {
@@ -92,12 +118,12 @@ func configureStartup(enabled, hidden, elevated bool) error {
 		}
 	}
 
-	deadline := time.Now().Add(10 * time.Second)
+	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		if startupTaskExists() == enabled {
 			return nil
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	if enabled {
@@ -143,16 +169,51 @@ func runSchtasksElevated(args []string) error {
 		return err
 	}
 
-	result, _, _ := procShellExecute.Call(
-		0,
-		uintptr(unsafe.Pointer(verb)),
-		uintptr(unsafe.Pointer(executable)),
-		uintptr(unsafe.Pointer(parameters)),
-		0,
-		0, // SW_HIDE: keep schtasks.exe from flashing a console window.
+	info := shellExecuteInfo{
+		fMask:        seeMaskNoCloseProcess,
+		lpVerb:       verb,
+		lpFile:       executable,
+		lpParameters: parameters,
+		nShow:        0, // SW_HIDE: keep schtasks.exe from flashing a console window.
+	}
+	info.cbSize = uint32(unsafe.Sizeof(info))
+
+	result, _, callErr := procShellExecuteEx.Call(uintptr(unsafe.Pointer(&info)))
+	if result == 0 {
+		if callErr != syscall.Errno(0) {
+			return fmt.Errorf("Windows elevation failed or was cancelled: %w", callErr)
+		}
+		return fmt.Errorf("Windows elevation failed or was cancelled")
+	}
+	if info.hProcess == 0 {
+		return fmt.Errorf("Windows elevation started without a process handle")
+	}
+	defer syscall.CloseHandle(info.hProcess)
+
+	waitResult, _, waitErr := procWaitForSingleObject.Call(
+		uintptr(info.hProcess),
+		shellExecuteWaitMillis,
 	)
-	if result <= 32 {
-		return fmt.Errorf("Windows elevation failed or was cancelled (code %d)", result)
+	if waitResult != waitObject0 {
+		if waitErr != syscall.Errno(0) {
+			return fmt.Errorf("wait for elevated startup task: %w", waitErr)
+		}
+		return fmt.Errorf("timed out waiting for elevated startup task")
+	}
+
+	var exitCode uint32
+	ok, _, exitErr := procGetExitCodeProcess.Call(
+		uintptr(info.hProcess),
+		uintptr(unsafe.Pointer(&exitCode)),
+	)
+	if ok == 0 {
+		if exitErr != syscall.Errno(0) {
+			return fmt.Errorf("read elevated startup task exit code: %w", exitErr)
+		}
+		return fmt.Errorf("read elevated startup task exit code")
+	}
+	if exitCode != 0 {
+		return fmt.Errorf("schtasks exited with code %d", exitCode)
 	}
 
 	return nil
