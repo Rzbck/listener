@@ -66,6 +66,10 @@ type Config struct {
 	Port            string          `json:"port"`
 	Interface       string          `json:"interface"`
 	AllowedCommands map[string]bool `json:"allowed_commands"`
+
+	LaunchAtLogin bool `json:"launch_at_login,omitempty"`
+	StartHidden   bool `json:"start_hidden,omitempty"`
+	RunElevated   bool `json:"run_elevated,omitempty"`
 	// New fields for granular key control
 	KeyControlMode string          `json:"key_control_mode"` // "full_access" or "restricted"
 	AllowedKeys    map[string]bool `json:"allowed_keys"`     // Map of allowed keys
@@ -2247,7 +2251,7 @@ func showActivityLogDialog(parent fyne.Window) {
 	logDialog.Show()
 }
 
-func startGUI() {
+func startGUI(startHidden bool) {
 	myApp := app.New()
 	appIcon := fyne.NewStaticResource("icon.png", iconPNG)
 	myApp.SetIcon(appIcon)
@@ -2647,8 +2651,13 @@ func startGUI() {
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Connection", connectionTab),
 		container.NewTabItem("Security", securityTab),
-		container.NewTabItem("About", aboutTab),
 	)
+
+	if tab := startupTab(w); tab != nil {
+		tabs.Append(tab)
+	}
+
+	tabs.Append(container.NewTabItem("About", aboutTab))
 
 	brandIcon := canvas.NewImageFromResource(appIcon)
 	brandIcon.SetMinSize(fyne.NewSize(48, 48))
@@ -2696,6 +2705,12 @@ func startGUI() {
 	w.Resize(fyne.NewSize(640, 520))
 	w.SetFixedSize(false)
 	guiReady = true
+
+	if startHidden && trayEnabled {
+		myApp.Run()
+		return
+	}
+
 	w.ShowAndRun()
 }
 
@@ -2714,5 +2729,5 @@ func main() {
 			log.Printf("Initial binding error: %v", err)
 		}
 	})
-	startGUI()
+	startGUI(hiddenLaunchRequested())
 }
