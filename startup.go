@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
@@ -10,8 +9,8 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-func hiddenLaunchRequested() bool {
-	for _, arg := range os.Args[1:] {
+func containsHiddenLaunchArg(args []string) bool {
+	for _, arg := range args {
 		if arg == "--hidden" {
 			return true
 		}

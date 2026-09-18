@@ -4,6 +4,10 @@ package main
 
 import "errors"
 
+func hiddenLaunchRequested() bool {
+	return false
+}
+
 func startupSupported() bool {
 	return false
 }

@@ -1,30 +1,23 @@
 package main
 
-import (
-	"os"
-	"testing"
-)
+import "testing"
 
-func TestHiddenLaunchRequested(t *testing.T) {
-	originalArgs := os.Args
-	t.Cleanup(func() { os.Args = originalArgs })
-
+func TestContainsHiddenLaunchArg(t *testing.T) {
 	tests := []struct {
 		name string
 		args []string
 		want bool
 	}{
-		{name: "default launch", args: []string{"listener"}, want: false},
-		{name: "hidden launch", args: []string{"listener", "--hidden"}, want: true},
-		{name: "other argument", args: []string{"listener", "--example"}, want: false},
-		{name: "hidden among arguments", args: []string{"listener", "--example", "--hidden"}, want: true},
+		{name: "default launch", args: nil, want: false},
+		{name: "hidden launch", args: []string{"--hidden"}, want: true},
+		{name: "other argument", args: []string{"--example"}, want: false},
+		{name: "hidden among arguments", args: []string{"--example", "--hidden"}, want: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			os.Args = tt.args
-			if got := hiddenLaunchRequested(); got != tt.want {
-				t.Fatalf("hiddenLaunchRequested() = %v, want %v", got, tt.want)
+			if got := containsHiddenLaunchArg(tt.args); got != tt.want {
+				t.Fatalf("containsHiddenLaunchArg() = %v, want %v", got, tt.want)
 			}
 		})
 	}

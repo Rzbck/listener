@@ -46,6 +46,10 @@ var (
 	procGetExitCodeProcess  = kernel32.NewProc("GetExitCodeProcess")
 )
 
+func hiddenLaunchRequested() bool {
+	return containsHiddenLaunchArg(os.Args[1:])
+}
+
 func startupSupported() bool {
 	return true
 }
